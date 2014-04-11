@@ -158,11 +158,16 @@ downgrading Pympler to version 0.3.x.
 from inspect import (isbuiltin, isclass, iscode, isframe, isfunction, ismethod,
                      ismodule, stack)
 from math import log
-from os import curdir, linesep
+from os import curdir
 from struct import calcsize  # type/class Struct only in Python 2.5+
 import sys
 import types as Types
 import weakref as Weakref
+
+# On Google App Engine <= 1.7.5, the sandboxed os module is missing linesep, so
+# fall back to '\n'
+import os
+linesep = getattr(os, 'linesep', '\n')
 
 __all__ = ['adict', 'asized', 'asizeof', 'asizesof',
            'Asized', 'Asizer',  # classes
@@ -1313,7 +1318,9 @@ try:
     from os import statvfs
     _typedef_both(type(statvfs(curdir)), refs=_statvfs_refs,  # statvfs_result
                   item=_sizeof_Cvoidp, leng=_len)
-except ImportError:  # missing
+except (ImportError, OSError):  # missing
+    # statvfs is disabled on App Engine. Calling statvfs(curdir) above
+    # raises OSError(errno.ENOSYS, 'Function not implemented')
     pass
 
 try:
