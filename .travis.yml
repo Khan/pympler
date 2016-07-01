@@ -4,16 +4,23 @@ python:
   - "2.7"
   - "3.2"
   - "3.3"
+  - "3.4"
 before_install:
-  - sudo apt-get install graphviz python-tk
+  - sudo apt-get -qq update
+  - sudo apt-get install -y graphviz python-tk
 install:
-  - pip install Sphinx --use-mirrors
-  - pip install pep8 --use-mirrors
+  - travis_retry pip install Sphinx
+  - travis_retry pip install pep8
+  - travis_retry pip install 'coverage<4'
+  - travis_retry pip install coveralls
 script:
-  - python setup.py try
+  - python -Wall setup.py try
   - python setup.py install
-  - python setup.py test
+  - python -Wall setup.py test
+  - coverage run test/runtest.py
   - python run.py --doctest
   - python run.py --html
 after_script:
   - pep8 --exclude=asizeof.py,metadata.py,bottle*.py --max-line-length=80 pympler
+after_success:
+  - coveralls

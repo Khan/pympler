@@ -24,7 +24,7 @@ def test_flatsize(failf=None, stdf=None):
     '''
     t, g, e = [], asizeof._getsizeof, 0
     if g:
-        for v in asizeof._values(asizeof._typedefs):
+        for v in asizeof._typedefs.copy().values():
             t.append(v.type)
             try:  # creating one instance
                 if v.type.__module__ not in ('io',):  # avoid 3.0 RuntimeWarning
@@ -306,6 +306,16 @@ class TypesTest(unittest.TestCase):
         size_data = asizeof.asizeof(data)
         self.assertTrue(size_closure >= size_data, (size_closure, size_data))
 
+    def test_namedtuple(self):
+        '''Test namedtuple __dict__ property isn't included
+        '''
+        from collections import namedtuple
+        Point = namedtuple('Point', ['x', 'y'])
+        point = Point(x=11, y=22)
+        size = asizeof.asized(point, detail=1)
+        refs = [ref.name for ref in size.refs]
+        self.assertTrue('__dict__' not in refs, refs)
+
 
 class FunctionTest(unittest.TestCase):
     '''Test exposed functions and parameters.
@@ -497,6 +507,18 @@ class FunctionTest(unittest.TestCase):
         size2 = asizeof.asizeof(pdict)
         # TODO: come up with useful assertions
         self.assertEqual(size1, size2)
+
+    def test_private_slots(self):
+        class PrivateSlot(object):
+            __slots__ = ('__data',)
+            def __init__(self, data):
+                self.__data = data
+
+        data = [42] * 100
+        container = PrivateSlot(data)
+        size1 = asizeof.asizeof(container)
+        size2 = asizeof.asizeof(data)
+        self.assertTrue(size1 > size2, (size1, size2))
 
 
 def _repr(o):

@@ -162,6 +162,7 @@ from os import curdir
 from struct import calcsize  # type/class Struct only in Python 2.5+
 import sys
 import types as Types
+import warnings
 import weakref as Weakref
 
 # On Google App Engine <= 1.7.5, the sandboxed os module is missing linesep, so
@@ -355,6 +356,8 @@ def _dir2(obj, pref='', excl=(), slots=None, itor=''):
             s = {}
             for c in type(obj).mro():
                 for a in getattr(c, slots, ()):
+                    if a.startswith('__'):
+                        a = '_' + c.__name__ + a
                     if hasattr(obj, a):
                         s.setdefault(a, getattr(obj, a))
              # assume __slots__ tuple/list
@@ -410,6 +413,13 @@ except AttributeError:  # Python 2.5
 def _iscell(obj):
     '''Return True if obj is a cell as used in a closure.'''
     return isinstance(obj, cell_type)
+
+
+def _isnamedtuple(obj):
+    '''Named tuples are identified via duck typing:
+    http://www.gossamer-threads.com/lists/python/dev/1142178
+    '''
+    return isinstance(obj, tuple) and hasattr(obj, '_fields')
 
 
 def _itemsize(t, item=0):
@@ -588,9 +598,12 @@ def _dict_refs(obj, named):
             yield _NamedRef('[K] ' + s, k)
             yield _NamedRef('[V] ' + s + ': ' + _repr(v), v)
     else:
-        for k, v in _items(obj):
-            yield k
-            yield v
+        try:
+            for k, v in _items(obj):
+                yield k
+                yield v
+        except ReferenceError:
+            warnings.warn("Reference error while iterating over '%s'" % str(obj.__class__))
 
 
 def _enum_refs(obj, named):
@@ -627,6 +640,12 @@ def _func_refs(obj, named):
 
 def _cell_refs(obj, named):
     return _refs(obj, named, 'cell_contents')
+
+
+def _namedtuple_refs(obj, named):
+    '''Return slots but exclude dict
+    '''
+    return _refs(obj, named, '__class__', slots='__slots__')
 
 
 def _gen_refs(obj, named):
@@ -714,9 +733,9 @@ def _weak_refs(obj, unused):  # named unused for PyChecker
 
 _all_refs = (None, _cell_refs, _class_refs, _co_refs, _dict_refs, _enum_refs,
              _exc_refs, _file_refs, _frame_refs, _func_refs, _gen_refs,
-             _im_refs, _inst_refs, _iter_refs, _module_refs, _prop_refs,
-             _seq_refs, _stat_refs, _statvfs_refs, _tb_refs, _type_refs,
-             _weak_refs)
+             _im_refs, _inst_refs, _iter_refs, _module_refs, _namedtuple_refs,
+             _prop_refs, _seq_refs, _stat_refs, _statvfs_refs, _tb_refs,
+             _type_refs, _weak_refs)
 
 
  # type-specific length functions
@@ -1440,7 +1459,7 @@ def _typedef(obj, derive=False, infer=False):
         if isclass(obj):  # class or type
             v.set(refs=_class_refs,
                   both=False)  # code only
-            if obj.__module__ in _builtin_modules:
+            if getattr(obj, '__module__', None) in _builtin_modules:
                 v.set(kind=_kind_ignored)
         elif isbuiltin(obj):  # function or method
             v.set(both=False,  # code only
@@ -1463,6 +1482,8 @@ def _typedef(obj, derive=False, infer=False):
         v.dup(kind=_kind_inferred)
     elif _iscell(obj):
         v.set(item=_itemsize(t), refs=_cell_refs)
+    elif _isnamedtuple(obj):
+        v.set(refs=_namedtuple_refs)
     elif getattr(obj, '__module__', None) in _builtin_modules:
         v.set(kind=_kind_ignored)
     else:  # assume an instance of some class
